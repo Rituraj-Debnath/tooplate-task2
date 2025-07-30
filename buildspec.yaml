@@ -1,0 +1,36 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      #Logging into Amazon ECR (replace region if needed)
+      - set -e # Exit on error
+      - echo Logging in to Amazon ECR...
+      - aws --region ap-south-1 ecr get-login-password | docker login --username AWS --password-stdin 211125619958.dkr.ecr.ap-south-1.amazonaws.com
+
+      # Setting image tag with Git commit hash for versioning
+      - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - REPOSITORY_URI=211125619958.dkr.ecr.ap-south-1.amazonaws.com/tooplate
+      - echo "Image Tag: $IMAGE_TAG"
+
+  build:
+    commands:
+      # Build the Docker image using the Dockerfile in the source code
+      - echo Building the Docker image...
+      - docker build -t $REPOSITORY_URI:latest .
+      - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+
+  post_build:
+    commands:
+      # Push the Docker image to ECR with both latest and specific tag
+      - echo Pushing Docker image to Amazon ECR...
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+
+      # Creating imagedefinitions.json for CodePipeline to update ECS service
+      - echo Writing imagedefinitions.json...
+      - printf '[{"name":"tooplate","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
